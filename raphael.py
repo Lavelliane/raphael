@@ -39,7 +39,7 @@ class Session:
         with self.lock:
             self.generation += 1
             if self.listener:
-                self.listener.halt.set()
+                self.listener.stop()
             self.listener = None
             self.level = 0
 

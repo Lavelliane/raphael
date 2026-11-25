@@ -58,9 +58,25 @@ Use the multilingual `small-q5_1` (181 MiB) or `base-q5_1` (57 MiB). English-onl
 | --- | --- |
 | Windows | Route Meet to your headphones or speakers. Pick the matching WASAPI loopback device inside Raphael. |
 | Linux | Use a PulseAudio server or PipeWire’s PulseAudio compatibility layer. Pick the monitor for the output playing the call. |
-| macOS | Install BlackHole 2ch. In Audio MIDI Setup, create a Multi-Output Device containing your headphones and BlackHole. Route Meet to that output and select BlackHole in Raphael. Grant the recording app audio-input access if prompted. [BlackHole setup](https://github.com/ExistentialAudio/BlackHole) |
+| macOS 14.2+ and Python 3.11+ | Select **Mac system audio (Core Audio)**. Allow system audio recording for the terminal or Python host that launches Raphael. Keep Meet on your usual speakers or headphones. |
+| Older macOS or Python 3.10, or an existing BlackHole setup | Install BlackHole 2ch. In Audio MIDI Setup, create a Multi-Output Device containing your headphones and BlackHole. Route Meet to that output and select BlackHole in Raphael. Grant the recording app audio-input access if prompted. [BlackHole setup](https://github.com/ExistentialAudio/BlackHole) |
 
 Start Raphael **from the activated environment**, open **Live workspace**, edit your watch topics, then choose **Start listening**. Let participants know before starting. The selected output includes other apps playing there. Your microphone is only included if you have explicitly routed it into that output.
+
+#### Apple Silicon quick start
+
+With Homebrew installed, run these commands from the Raphael checkout to set up the multilingual model and start Whisper in one terminal:
+
+```sh
+brew install whisper.cpp
+mkdir -p models
+curl -fL --retry 3 -o models/ggml-small-q5_1.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin
+whisper-server -m models/ggml-small-q5_1.bin -l auto --host 127.0.0.1 --port 8080
+```
+
+In a second terminal in the same checkout, activate the Python environment above, install the current requirements, and run `python raphael.py`. Choose **Start listening → Mac system audio (Core Audio) → Listen**. Play a few seconds of speech and pause. The level meter should move during speech and a transcript should appear after the pause.
+
+If macOS asks for access, allow the app that launched Raphael under **System Settings → Privacy & Security → Screen & System Audio Recording**. If macOS requests a relaunch, quit that terminal or IDE, reopen it, and restart the services. On older macOS versions, check your version with `sw_vers -productVersion` and use the playback setup table above. [Apple recording permissions](https://support.apple.com/guide/mac-help/mchld6aa7d23/mac) · [Homebrew whisper.cpp](https://formulae.brew.sh/formula/whisper.cpp)
 
 ### 3. Pick an action
 
