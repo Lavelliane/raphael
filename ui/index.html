@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="raphael-token" content="SESSION_TOKEN"><title>Raphael · Meeting workspace</title><link rel="icon" href="/mark.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<div class="layout">
+<aside id="sidebar"><div class="brand"><img src="/mark.svg" alt="" width="30" height="30"><strong>raphael</strong></div>
+<button id="new" class="new"><i data-icon="plus"></i> New session</button>
+<h2>Workspace</h2><button id="nav-live" class="nav selected"><i data-icon="wave"></i> Live workspace</button><button id="nav-demo" class="nav"><i data-icon="play"></i> Example session</button>
+<div class="bottomnav"><button id="settings" class="nav"><i data-icon="settings"></i> Settings</button><div class="profile"><span id="side-avatar"></span><div><b>Raphael</b><small id="side-persona"></small></div></div></div></aside>
+<main><header><button id="mobile-menu" aria-label="Toggle navigation"><i data-icon="menu"></i></button><i data-icon="panel"></i><span>Workspace</span><span class="slash">/</span><b id="crumb">Live session</b><span class="top-status" id="top-status">Standby</span></header>
+<section class="canvas"><div class="session-title"><div><div class="eyebrow"><span class="tiny-mark"></span> Meeting workspace</div><h1 id="session-title">Live session</h1></div><button class="primary" id="listen"><i data-icon="wave"></i><span>Start listening</span></button></div>
+<div class="columns"><div class="stream"><article class="box"><div class="box-head"><h3><i data-icon="wave"></i> Transcript</h3><span class="meta" id="transcript-meta">EN / TL</span></div><div id="transcript" role="log" aria-live="polite"></div></article>
+<article class="box assistant-box"><div class="box-head"><h3><i data-icon="spark"></i> Raphael</h3><span id="card-count" class="meta"></span></div><div id="cards" aria-live="polite"></div></article>
+<div class="commands" id="commands"></div><form id="ask-form"><i data-icon="terminal"></i><input id="question" maxlength="1600" aria-label="Question for Raphael" placeholder="Ask about this session…"><button type="submit" title="Send question" aria-label="Send question"><i data-icon="arrow"></i></button></form><p id="feedback" role="status"></p></div>
+<aside class="context"><h2>Session context</h2><div class="context-group"><div class="context-label"><i data-icon="folder"></i> Workspace <button id="edit-folder" aria-label="Change workspace"><i data-icon="edit"></i></button></div><span id="folder-label"></span></div>
+<div class="context-group"><div class="context-label"><i data-icon="hash"></i> Watch topics <button id="edit-topics" aria-label="Edit watch topics"><i data-icon="edit"></i></button></div><div id="topics"></div></div>
+<div class="context-group"><div class="context-label"><i data-icon="audio"></i> Audio source</div><span id="source-label">System playback</span><div class="meter" id="meter" aria-hidden="true"></div></div>
+<div class="context-group"><div class="context-label"><i data-icon="cpu"></i> Assistant</div><span>Codex · ChatGPT login</span></div></aside></div></section>
+<footer><span><i data-icon="terminal"></i> raphael</span><span id="foot-state">Local workspace</span></footer></main></div>
+<dialog id="dialog"><form id="dialog-form"><div class="dialog-head"><h2 id="dialog-title"></h2><button type="button" id="close" aria-label="Close dialog"><i data-icon="close"></i></button></div><div id="dialog-body"></div><p id="dialog-error" role="alert"></p><div class="dialog-foot"><button type="button" id="cancel">Cancel</button><button class="primary" type="submit" id="confirm">Save</button></div></form></dialog>
+</body></html>
