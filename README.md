@@ -46,11 +46,9 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Build or install **whisper-server** from whisper.cpp and download a multilingual model. Start it in a separate terminal. Substitute the actual binary and model paths on your machine:
+On a Mac, follow the [Apple Silicon quick start](#apple-silicon-quick-start) below. For other platforms, install `whisper-server` from whisper.cpp, put it on your PATH, and download the multilingual model to `models/ggml-small-q5_1.bin` in this checkout. To use an existing model elsewhere, run `python raphael.py --whisper-model /path/to/model.bin`.
 
-```sh
-whisper-server -m /path/to/ggml-small-q5_1.bin -l auto --host 127.0.0.1 --port 8080
-```
+**Start listening** launches Whisper on loopback and waits for the model to load. Raphael reuses a running whisper.cpp service at the configured port. It keeps its own engine warm between listening sessions and stops it when you quit Raphael. An independently launched server has its own lifecycle.
 
 Use the multilingual `small-q5_1` (181 MiB) or `base-q5_1` (57 MiB). English-only filenames contain `.en`. Model accuracy on mixed Taglish, names, and programming terms depends on the model, hardware and audio quality. [whisper.cpp server](https://github.com/ggml-org/whisper.cpp/tree/master/examples/server) · [Multilingual model downloads](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
 
@@ -65,16 +63,15 @@ Start Raphael **from the activated environment**, open **Live workspace**, edit 
 
 #### Apple Silicon quick start
 
-With Homebrew installed, run these commands from the Raphael checkout to set up the multilingual model and start Whisper in one terminal:
+With Homebrew installed and the Python environment above active, run this once from the Raphael checkout:
 
 ```sh
-brew install whisper.cpp
-mkdir -p models
-curl -fL --retry 3 -o models/ggml-small-q5_1.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin
-whisper-server -m models/ggml-small-q5_1.bin -l auto --host 127.0.0.1 --port 8080
+python raphael.py --setup-whisper
 ```
 
-In a second terminal in the same checkout, activate the Python environment above, install the current requirements, and run `python raphael.py`. Choose **Start listening → Mac system audio (Core Audio) → Listen**. Play a few seconds of speech and pause. The level meter should move during speech and a transcript should appear after the pause.
+This checks for `whisper-server`, installs Homebrew’s `whisper.cpp` formula if needed, and downloads the multilingual model (181 MiB) if a verified copy is missing. Setup verifies the SHA-256 checksum before replacing the file, then opens Raphael. For later launches use `python raphael.py`.
+
+Choose **Start listening → Mac system audio (Core Audio) → Listen**. Leave the Raphael terminal running. Play a few seconds of speech and pause. The level meter should move during playback and a transcript should appear after the pause. If port 8080 belongs to another app, run `python raphael.py --whisper-port 8081` to use a free port.
 
 If macOS asks for access, allow the app that launched Raphael under **System Settings → Privacy & Security → Screen & System Audio Recording**. If macOS requests a relaunch, quit that terminal or IDE, reopen it, and restart the services. On older macOS versions, check your version with `sw_vers -productVersion` and use the playback setup table above. [Apple recording permissions](https://support.apple.com/guide/mac-help/mchld6aa7d23/mac) · [Homebrew whisper.cpp](https://formulae.brew.sh/formula/whisper.cpp)
 

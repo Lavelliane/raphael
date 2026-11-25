@@ -128,7 +128,17 @@ $("edit-topics").onclick=()=>{
 async function startDialog(){
   const id=modal("Start listening",'<label for="device">Playback device</label><select id="device"></select><p>Raphael listens to audio played through this output. Let participants know before starting.</p>',"Listen",async()=>{
     if(!$("device").value)throw Error("Choose an available playback device.");
-    live=await api("start",{device:$("device").value});status("");render();
+    const device = $("device").value;
+    $("confirm").textContent = "Preparing Whisper…";
+    try {
+      await api("prepare-whisper");
+      if (id !== dialogId || !$("dialog").open) return;
+      live = await api("start", {device});
+      status("");
+      render();
+    } finally {
+      if (id === dialogId) $("confirm").textContent = "Listen";
+    }
   });
   $("confirm").disabled=true;
   try{const ds=await api("devices");if(id!==dialogId)return;

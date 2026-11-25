@@ -3,13 +3,14 @@ import argparse
 import json
 import mimetypes
 import secrets
+import subprocess
 import threading
 import time
 import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.request import urlopen
+from whisper_service import DEFAULT_MODEL, WhisperService, setup_mac_whisper
 
 from assistant import ACTIONS, PERSONALITIES, answer
 from audio import Listener, outputs
@@ -18,7 +19,8 @@ UI = Path(__file__).parent / "ui"
 
 
 class Session:
-    def __init__(self, whisper_port):
+    def __init__(self, whisper_port, whisper_model=DEFAULT_MODEL):
+        self.whisper = WhisperService(whisper_port, whisper_model)
         self.port = whisper_port
         self.lock = threading.RLock()
         self.listener = None
@@ -44,15 +46,14 @@ class Session:
             self.level = 0
 
     def start(self, device):
-        try:
-            with urlopen(f"http://127.0.0.1:{self.port}/health", timeout=3) as response:
-                if response.status != 200:
-                    raise ValueError("Whisper is loading. Try again in a moment.")
-        except OSError as exc:
-            raise ValueError(f"Start whisper-server on 127.0.0.1:{self.port} first. See README → Live transcription.") from exc
+        with self.lock:
+            requested_generation = self.generation
+        self.whisper.ensure_ready()
         with self.lock:
             if self.listener:
                 raise ValueError("Capture is already running.")
+            if self.generation != requested_generation:
+                raise ValueError("Listening request was cancelled.")
             self.generation += 1
             generation = self.generation
             self.error = ""
@@ -81,8 +82,8 @@ class Session:
             self.listener.start()
 
 
-def make_server(port, whisper_port):
-    state, key = Session(whisper_port), secrets.token_urlsafe(32)
+def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
+    state, key = Session(whisper_port, whisper_model), secrets.token_urlsafe(32)
     answering = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -129,6 +130,9 @@ def make_server(port, whisper_port):
                     return self.send(200, state.state())
                 if self.path == "/api/devices":
                     return self.send(200, [dict(id=str(x.id), name=x.name) for x in outputs()])
+                if self.path == "/api/prepare-whisper":
+                    state.whisper.ensure_ready()
+                    return self.send(200, {})
                 if self.path == "/api/start":
                     state.start(str(data["device"]))
                 elif self.path == "/api/stop":
@@ -189,9 +193,18 @@ if __name__ == "__main__":
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--port", type=int, default=8765)
     cli.add_argument("--whisper-port", type=int, default=8080)
+    cli.add_argument("--setup-whisper", action="store_true",
+                     help="Install whisper.cpp if needed and prepare the multilingual model on macOS before launching.")
+    cli.add_argument("--whisper-model", type=Path, default=DEFAULT_MODEL,
+                     help="Model file used when Raphael starts its own whisper-server.")
     cli.add_argument("--no-browser", action="store_true")
     args = cli.parse_args()
-    server, state = make_server(args.port, args.whisper_port)
+    if args.setup_whisper:
+        try:
+            setup_mac_whisper()
+        except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+            cli.exit(1, f"Whisper setup failed: {exc}\n")
+    server, state = make_server(args.port, args.whisper_port, args.whisper_model)
     address = f"http://127.0.0.1:{server.server_port}"
     print(f"Raphael is ready at {address}", flush=True)
     if not args.no_browser:
@@ -202,4 +215,5 @@ if __name__ == "__main__":
         pass
     finally:
         state.stop()
+        state.whisper.close()
         server.server_close()
