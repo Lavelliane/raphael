@@ -16,7 +16,34 @@ Raphael keeps the conversation and the checkout close together. When someone say
 
 *Rimuru Tempest and Raphael, Lord of Wisdom.* Character artwork is embedded from the official TenSura portal and StudioZ’s Elemental Story collaboration. Character and anime rights belong to their respective creators and rights holders, including Taiki Kawakami, Fuse, Kodansha, and the TenSura Production Committee. Raphael is an independent fan-inspired software project. The pixel avatars in the app are original.
 
-## Try the workspace
+## Run the desktop app on Apple Silicon
+
+![Raphael desktop showing a Taglish refactoring review](docs/desktop-workspace.webp)
+
+Raphael uses **Electron, React, and TypeScript** for its desktop window. The local Python engine handles Mac playback, Whisper, and Codex. The desktop app starts and stops its own engine. If you already use Raphael on this Mac, quit the previous session and run these commands in your checkout with Node.js 22.12+ and your existing Python environment:
+
+```sh
+npm ci
+npm start
+```
+
+Choose **Start listening**, select **Mac system audio (Core Audio)**, and keep **Hands-free assistance** checked. The composer has the Codex model picker, the paperclip opens workspace settings with a native folder chooser, and **+** opens manual actions. Use **⌘K** to find a session and **⌘,** for personalities, avatars and watch topics. The right pane and sidebar can each be collapsed. **Refactoring review** is a scripted example you can explore offline.
+
+Desktop reuses a running Whisper server on port 8080. When it starts Whisper itself, it prefers an installed fast multilingual model and falls back to the balanced model. For custom installs, set `RAPHAEL_PYTHON`, `RAPHAEL_WHISPER_MODEL`, or `RAPHAEL_WHISPER_PORT` before launching. On a fresh Mac, use the [audio setup](#2-live-transcription) below and sign in once with `codex login`. Electron stores its preferences separately from the browser workspace. Closing the desktop window ends the session.
+
+### Build a Finder app
+
+From the checkout on your M3, with your Python 3.11+ audio environment active:
+
+```sh
+python -m pip install "pyinstaller>=6.10,<7"
+npm run package:mac
+open release/Raphael-darwin-arm64/Raphael.app
+```
+
+The local build bundles the React interface, Electron, the Python interpreter, native audio modules and one installed Whisper model when available. Whisper’s executable and Codex come from your Mac. The build records their directories for Finder launches. Allow system audio recording for Raphael if macOS asks. The generated app is ad-hoc signed for local use.
+
+## Try the browser workspace
 
 Requires Python 3.10 or newer. From the repository root run:
 
