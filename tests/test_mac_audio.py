@@ -47,9 +47,17 @@ class MacAudioTests(unittest.TestCase):
         pcm = speech + bytes(4 * len(speech))
         self.recorder.stream.return_value = iter([pcm[:2000], pcm[2000:]])
         self.listener.capture()
-        self.assertEqual(self.listener.pending.get_nowait(), pcm)
+        self.assertEqual(self.listener.pending.get_nowait(), pcm[:3 * len(speech)])
         self.assertEqual(self.listener.on_level.call_count, 5)
         self.listener.on_error.assert_called_once_with("Mac system audio capture ended. Start listening again.")
+
+    @patch("audio.platform.system", return_value="Darwin")
+    def test_continuous_speech_is_submitted_every_four_seconds(self, _system):
+        speech = b"\x00\x20" * BLOCK_FRAMES
+        self.recorder.stream.return_value = iter([speech] * 40)
+        self.listener.capture()
+        for _ in range(2):
+            self.assertEqual(self.listener.pending.get_nowait(), speech * 20)
 
     def test_stop_releases_silent_native_stream(self):
         started, stopped = threading.Event(), threading.Event()

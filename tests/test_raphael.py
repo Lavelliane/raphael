@@ -2,6 +2,7 @@ import io
 import json
 import tempfile
 import threading
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -52,6 +53,30 @@ class LocalServiceTests(unittest.TestCase):
     def test_new_session_clears_in_memory_data(self):
         self.session.turns.append({"text": "draft"})
         self.assertEqual(self.post("new", {})["turns"], [])
+
+    def test_live_api_generates_auto_card_and_keeps_manual_actions_available(self):
+        self.post("new", {})
+        def emit(listener_self):
+            listener_self.on_turn("Paano natin hahatiin ang checkout?")
+        def respond(*args):
+            return dict(kind="answer", title="Split by feature", body="Start with checkout.", source="", nodes=[])
+        settings = dict(enabled=True, model="example-mini", topics=["architecture"])
+        with patch.object(self.session.whisper, "ensure_ready"), patch("audio.Listener.start", emit), \
+             patch.object(self.session.copilot, "generate", side_effect=respond) as auto, \
+             patch("raphael.answer", side_effect=respond) as manual:
+            self.post("start", dict(device="simulated", assistant=settings))
+            try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline and not self.post("state", {})["copilot"]["cards"]:
+                    time.sleep(.02)
+                self.assertEqual(self.post("state", {})["copilot"]["cards"][0]["title"], "Split by feature")
+                self.assertEqual(auto.call_args.args[6], settings["model"])
+                self.post("answer", dict(action="answer", turns=["Paano?"], model=settings["model"]))
+                self.assertEqual(manual.call_args.args[-1], settings["model"])
+                self.assertFalse(self.post("assistant", {**settings, "enabled": False})["copilot"]["enabled"])
+            finally:
+                self.post("new", {})
+            self.assertEqual(self.post("state", {})["copilot"]["cards"], [])
 
     def test_wav_contract(self):
         pcm = bytes(32000)

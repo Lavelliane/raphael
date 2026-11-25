@@ -10,10 +10,12 @@ import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from whisper_service import DEFAULT_MODEL, WhisperService, setup_mac_whisper
+from whisper_service import DEFAULT_MODEL, FAST_MODEL, WhisperService, setup_mac_whisper
 
 from assistant import ACTIONS, PERSONALITIES, answer
 from audio import Listener, outputs
+from codex_models import catalog
+from handsfree import HandsFree, preferences
 
 UI = Path(__file__).parent / "ui"
 
@@ -21,6 +23,7 @@ UI = Path(__file__).parent / "ui"
 class Session:
     def __init__(self, whisper_port, whisper_model=DEFAULT_MODEL):
         self.whisper = WhisperService(whisper_port, whisper_model)
+        self.copilot = HandsFree()
         self.port = whisper_port
         self.lock = threading.RLock()
         self.listener = None
@@ -35,17 +38,18 @@ class Session:
     def state(self):
         with self.lock:
             return dict(active=self.listener is not None, error=self.error, turns=list(self.turns),
-                        level=self.level, dropped=self.dropped, started=self.started)
+                        level=self.level, dropped=self.dropped, started=self.started, copilot=self.copilot.state())
 
-    def stop(self):
+    def stop(self, clear=False):
         with self.lock:
             self.generation += 1
+            self.copilot.stop(clear)
             if self.listener:
                 self.listener.stop()
             self.listener = None
             self.level = 0
 
-    def start(self, device):
+    def start(self, device, settings):
         with self.lock:
             requested_generation = self.generation
         self.whisper.ensure_ready()
@@ -70,7 +74,9 @@ class Session:
 
             def turn(text):
                 self.next_id += 1
-                self.turns.append(dict(id=self.next_id, text=text, timestamp=time.time()))
+                result = dict(id=self.next_id, text=text, timestamp=time.time())
+                self.turns.append(result)
+                self.copilot.heard(result)
 
             def fail(message):
                 self.error = message
@@ -79,6 +85,7 @@ class Session:
             self.listener = Listener(device, self.port, apply(turn), apply(fail),
                                      apply(lambda x: setattr(self, "level", x)),
                                      apply(lambda: setattr(self, "dropped", self.dropped + 1)))
+            self.copilot.configure(settings)
             self.listener.start()
 
 
@@ -128,18 +135,25 @@ def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
                 data = json.loads(self.rfile.read(size))
                 if self.path == "/api/state":
                     return self.send(200, state.state())
+                if self.path == "/api/models":
+                    return self.send(200, catalog.get())
                 if self.path == "/api/devices":
                     return self.send(200, [dict(id=str(x.id), name=x.name) for x in outputs()])
                 if self.path == "/api/prepare-whisper":
                     state.whisper.ensure_ready()
                     return self.send(200, {})
                 if self.path == "/api/start":
-                    state.start(str(data["device"]))
+                    state.start(str(data["device"]), preferences(data.get("assistant", {})))
+                elif self.path == "/api/assistant":
+                    settings = preferences(data)
+                    with state.lock:
+                        if state.listener and settings != state.copilot.settings:
+                            state.copilot.configure(settings)
                 elif self.path == "/api/stop":
                     state.stop()
                 elif self.path == "/api/new":
                     with state.lock:
-                        state.stop()
+                        state.stop(clear=True)
                         state.turns.clear()
                         state.started, state.error, state.dropped = None, "", 0
                 elif self.path == "/api/folder":
@@ -165,7 +179,7 @@ def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
                 elif self.path == "/api/answer":
                     action = data["action"]
                     personality = data.get("personality", "sage")
-                    if action not in ACTIONS or personality not in PERSONALITIES:
+                    if action not in ACTIONS or action == "auto" or personality not in PERSONALITIES:
                         raise ValueError("Unknown action or personality.")
                     folder = data.get("folder", "")
                     if folder and not Path(folder).is_dir():
@@ -175,7 +189,8 @@ def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
                     try:
                         result = answer(action, [str(x)[:1400] for x in data.get("turns", [])][-12:],
                                         data.get("topics", [])[:12], folder,
-                                        str(data.get("question", ""))[:2000], personality)
+                                        str(data.get("question", ""))[:2000], personality,
+                                        str(data.get("model", "default"))[:120])
                     finally:
                         answering.release()
                     return self.send(200, result)
@@ -195,16 +210,19 @@ if __name__ == "__main__":
     cli.add_argument("--whisper-port", type=int, default=8080)
     cli.add_argument("--setup-whisper", action="store_true",
                      help="Install whisper.cpp if needed and prepare the multilingual model on macOS before launching.")
-    cli.add_argument("--whisper-model", type=Path, default=DEFAULT_MODEL,
+    models = cli.add_mutually_exclusive_group()
+    models.add_argument("--whisper-preset", choices=("fast", "balanced"), help="Multilingual base (fast) or small (balanced).")
+    models.add_argument("--whisper-model", type=Path,
                      help="Model file used when Raphael starts its own whisper-server.")
     cli.add_argument("--no-browser", action="store_true")
     args = cli.parse_args()
     if args.setup_whisper:
         try:
-            setup_mac_whisper()
+            setup_mac_whisper(args.whisper_preset or "balanced")
         except (ValueError, OSError, subprocess.CalledProcessError) as exc:
             cli.exit(1, f"Whisper setup failed: {exc}\n")
-    server, state = make_server(args.port, args.whisper_port, args.whisper_model)
+    model = args.whisper_model or (FAST_MODEL if args.whisper_preset == "fast" else DEFAULT_MODEL)
+    server, state = make_server(args.port, args.whisper_port, model)
     address = f"http://127.0.0.1:{server.server_port}"
     print(f"Raphael is ready at {address}", flush=True)
     if not args.no_browser:
@@ -215,5 +233,6 @@ if __name__ == "__main__":
         pass
     finally:
         state.stop()
+        state.copilot.close()
         state.whisper.close()
         server.server_close()

@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 
 
 BLOCK_FRAMES = 3200
+PAUSE_BLOCKS = 2  # 400 ms at 16 kHz
+MAX_BLOCKS = 20  # 4 seconds of uninterrupted speech
 MAC_SYSTEM_ID = "coreaudio:system"
 
 
@@ -170,7 +172,7 @@ class Listener:
                     pre.clear()
                 chunks.append(block)
                 quiet = quiet + 1 if level < 0.005 else 0
-                if quiet >= 4 or len(chunks) >= 50:
+                if quiet >= PAUSE_BLOCKS or len(chunks) >= MAX_BLOCKS:
                     self.enqueue(chunks)
                     chunks, quiet = [], 0
         except Exception as exc:

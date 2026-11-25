@@ -102,3 +102,19 @@ class WhisperStartupTests(unittest.TestCase):
             self.assertEqual(self.model.read_bytes(), data)
             self.assertEqual(run.call_count, 2)
             self.assertEqual(list(self.folder.iterdir()), [self.model])
+
+    def test_fast_setup_verifies_base_and_keeps_balanced_model(self):
+        fast = self.folder / "ggml-base-q5_1.bin"
+        self.model.write_bytes(b"installed-small")
+        sample = b"fast-model"
+        def download(args, check):
+            self.assertTrue(args[-1].endswith("/ggml-base-q5_1.bin"))
+            Path(args[args.index("--output") + 1]).write_bytes(sample)
+        with patch.object(sys, "platform", "darwin"), patch.object(whisper, "DEFAULT_MODEL", self.model), \
+             patch.object(whisper, "FAST_MODEL", fast), patch.object(whisper, "FAST_SHA256", hashlib.sha256(sample).hexdigest()), \
+             patch.object(shutil, "which", return_value="whisper-server"), patch.object(subprocess, "run", side_effect=download) as run:
+            whisper.setup_mac_whisper("fast")
+            whisper.setup_mac_whisper("fast")
+            run.assert_called_once()
+        self.assertEqual(fast.read_bytes(), sample)
+        self.assertEqual(self.model.read_bytes(), b"installed-small")

@@ -29,7 +29,7 @@ function avatar(key) {
   sprites[key].forEach((row,y)=>[...row].forEach((c,x)=>{if(c==="1") cells+='<rect x="'+x+'" y="'+(y+1)+'" width="1" height="1"/>';}));
   return '<span class="avatar '+key+'"><svg viewBox="0 0 8 8" fill="currentColor" aria-hidden="true">'+cells+'</svg></span>';
 }
-const defaults={personality:"sage",avatar:"sage",topics:["codebase refactoring","architecture","software design"],folder:"",auto:false};
+const defaults={personality:"sage",avatar:"sage",topics:["codebase refactoring","architecture","software design"],folder:"",handsFree:true,model:"fast"};
 let prefs;
 try {prefs={...defaults,...JSON.parse(localStorage.getItem("raphael.preferences")||"{}")};} catch {prefs={...defaults};}
 if (!Object.hasOwn(sprites,prefs.avatar)) prefs.avatar="sage";
@@ -50,7 +50,38 @@ const samples={
 };
 const actions=[["answer","Answer question","terminal"],["check","Check claim","check"],["explain","Explain","explain"],["insight","Insight","insight"],["diagram","Diagram","diagram"]];
 let demo=false, live={turns:[],active:false}, liveCards=[], demoCards=[samples.answer], busy=false, seq=0;
-let dialogSubmit=null, dialogId=0, lastAutoId=0, lastAutoAt=0;
+let dialogSubmit=null, dialogId=0, catalog={models:[],fast:""}, stateRevision=0, lastCardsKey="";
+const kindLabels={answer:"Suggested answer",correction:"Claim check",possible_correction:"Possible correction",explain:"Explanation",followup:"Follow-up"};
+const handsFreeControl='<label class="checkbox"><input type="checkbox" id="hands-free"> Hands-free assistance</label><p>Send new speech and recent context to Codex for short suggestions. Uses your plan’s Codex allowance.</p>';
+function assistantSettings(settings=prefs){
+  return {enabled:settings.handsFree,model:settings.model,topics:settings.topics,personality:settings.personality,folder:settings.folder};
+}
+function modelOptions(select,choice){
+  const label=catalog.fast?"Fast · "+catalog.fast:"Fast · Codex default";
+  const choices=[["fast",label],["default","Codex default"],...catalog.models.map(m=>[m.id,m.name])];
+  if(!choices.some(([id])=>id===choice))choices.push([choice,choice+" (unavailable)"]);
+  select.replaceChildren(...choices.map(([id,name])=>new Option(name,id)));
+  select.value=choice;
+}
+async function refreshModels(){
+  try{catalog=await api("models");}catch{return;}
+  modelOptions($("session-model"),prefs.model);
+  if($("settings-model"))modelOptions($("settings-model"),$("settings-model").value);
+  if($("model-hint"))$("model-hint").textContent=modelHint();
+}
+function modelHint(){
+  return catalog.models.length?"Fast prefers a lightweight model. Pick Codex default to use your CLI’s model and reasoning settings.":"Model discovery is unavailable. Fast will use the CLI default. Update Codex CLI to list individual models.";
+}
+async function updatePrefs(changes){
+  const next={...prefs,...changes};
+  if(live.active)await api("assistant",assistantSettings(next));
+  Object.assign(prefs,changes);save();modelOptions($("session-model"),prefs.model);render();
+}
+$("session-model").onchange=async e=>{
+  const select=e.target;select.disabled=true;
+  try{await updatePrefs({model:select.value});}catch(err){status(err.message);select.value=prefs.model;}
+  finally{select.disabled=demo;}
+};
 const elem=(tag,cls,txt)=>{const el=document.createElement(tag);if(cls)el.className=cls;if(txt!==undefined)el.textContent=txt;return el;};
 async function api(route,data={}){
   const res=await fetch("/api/"+route,{method:"POST",headers:{"Content-Type":"application/json","X-Raphael-Token":document.querySelector('meta[name="raphael-token"]').content},body:JSON.stringify(data)});
@@ -61,11 +92,15 @@ async function api(route,data={}){
 function status(msg){$("feedback").textContent=msg;}
 function timeText(n){const secs=Math.max(0,Math.floor(n));return Math.floor(secs/60).toString().padStart(2,"0")+":"+(secs%60).toString().padStart(2,"0");}
 function showCards(){
-  const box=$("cards"), cards=demo?demoCards:liveCards; box.replaceChildren();
+  const box=$("cards"), cards=demo?demoCards:[...liveCards,...(live.copilot?.cards||[])].sort((a,b)=>a.timestamp-b.timestamp);
+  const key=JSON.stringify([demo,prefs.avatar,prefs.handsFree,live.active,cards.length,cards.slice(-3)]);
+  if(key===lastCardsKey)return;
+  lastCardsKey=key;box.replaceChildren();
   $("card-count").textContent=cards.length ? cards.length+" "+(cards.length===1?"CARD":"CARDS") : "";
-  if(!cards.length) box.append(elem("p","quiet","Ask a question or check a claim to get a short answer here."));
+  if(!cards.length) box.append(elem("p","quiet",prefs.handsFree?"Raphael will suggest a reply, clarify an idea, or flag a claim as the conversation unfolds.":"Choose an action or ask a question for a short answer."));
   cards.slice(-3).reverse().forEach(card=>{
     const row=elem("div","card"), face=elem("span"), body=elem("div");face.innerHTML=avatar(prefs.avatar);
+    if(card.id&&kindLabels[card.kind])body.append(elem("div","card-kind",kindLabels[card.kind]));
     body.append(elem("b","",card.title),elem("p","",card.body));
     if(card.source){const src=elem("button","source",card.source);src.onclick=()=>viewSource(card);body.append(src);}
     if(card.nodes?.length){const flow=elem("div","flow");card.nodes.forEach((label,i)=>{if(i)flow.append("→");flow.append(elem("span","",label));});body.append(flow);}
@@ -91,6 +126,10 @@ function render(){
   $("transcript-meta").textContent=demo?"EXAMPLE · EN / TL":"EN / TL";
   $("meter").replaceChildren(...Array.from({length:22},(_,i)=>elem("b",!demo&&live.active&&i<Math.round(live.level*22)?"on":"")));
   $("edit-folder").disabled=$("edit-topics").disabled=demo;
+  $("session-model").disabled=demo;
+  $("assistant-state").textContent=demo?"Scripted replies":live.copilot?.error&&live.active?live.copilot.error:
+    live.active&&live.copilot?.busy?"Considering the conversation…":
+    (live.active?live.copilot?.enabled:prefs.handsFree)?"Hands-free · ChatGPT login":"Manual · ChatGPT login";
   showCards();
 }
 function modal(title,html,confirm,submit){
@@ -107,39 +146,43 @@ async function viewSource(card){
 }
 $("settings").onclick=()=>{
   $("sidebar").classList.remove("open");let selected=prefs.avatar;
-  modal("Settings",'<label for="persona">Assistant personality</label><select id="persona"></select><p id="hint"></p><label>Avatar</label><div class="choice-list" id="avatar-list"></div><label class="checkbox"><input type="checkbox" id="auto"> Suggest insights for matching topics</label><p>Topic matches can send recent turns to Codex once a minute while listening.</p>',"Save settings",()=>{
-    prefs.personality=$("persona").value;prefs.avatar=selected;prefs.auto=$("auto").checked;save();render();
+  modal("Settings",'<label for="persona">Assistant personality</label><select id="persona"></select><p id="hint"></p><label>Avatar</label><div class="choice-list" id="avatar-list"></div><label for="settings-model">Codex model</label><select id="settings-model"></select><p id="model-hint"></p>'+handsFreeControl,"Save settings",async()=>{
+    await updatePrefs({personality:$("persona").value,avatar:selected,handsFree:$("hands-free").checked,model:$("settings-model").value});
   });
   for(const [id,[name]] of Object.entries(personalities))$("persona").add(new Option(name,id));
-  $("persona").value=prefs.personality;$("auto").checked=prefs.auto;
+  $("persona").value=prefs.personality;$("hands-free").checked=prefs.handsFree;
+  modelOptions($("settings-model"),prefs.model);$("model-hint").textContent=modelHint();void refreshModels();
   $("persona").onchange=()=>$("hint").textContent=personalities[$("persona").value][1];$("persona").onchange();
   const paint=()=>{$("avatar-list").replaceChildren();Object.keys(sprites).forEach(id=>{const b=elem("button");b.type="button";b.title=names[id];b.setAttribute("aria-label",names[id]);b.setAttribute("aria-pressed",String(selected===id));b.innerHTML=avatar(id);b.onclick=()=>{selected=id;paint();};$("avatar-list").append(b);});};paint();
 };
 $("edit-folder").onclick=()=>{
   modal("Connect a folder",'<label for="folder">Local folder path</label><input id="folder" placeholder="/path/to/project"><p>Codex can read this folder for answers. Clear the field to disconnect it.</p>',"Apply",async()=>{
-    const value=$("folder").value.trim();prefs.folder=value?(await api("folder",{path:value})).path:"";save();render();
+    const value=$("folder").value.trim();await updatePrefs({folder:value?(await api("folder",{path:value})).path:""});
   });$("folder").value=prefs.folder;$("folder").focus();
 };
 $("edit-topics").onclick=()=>{
-  modal("Watch topics",'<label for="topic-input">One topic per line</label><textarea id="topic-input" rows="5"></textarea>',"Save topics",()=>{
-    prefs.topics=[...new Set($("topic-input").value.split(/[,\n]/).map(t=>t.trim()).filter(Boolean))].slice(0,12);save();render();
+  modal("Watch topics",'<label for="topic-input">One topic per line</label><textarea id="topic-input" rows="5"></textarea>',"Save topics",async()=>{
+    await updatePrefs({topics:[...new Set($("topic-input").value.split(/[,\n]/).map(t=>t.trim()).filter(Boolean))].slice(0,12)});
   });$("topic-input").value=prefs.topics.join("\n");
 };
 async function startDialog(){
-  const id=modal("Start listening",'<label for="device">Playback device</label><select id="device"></select><p>Raphael listens to audio played through this output. Let participants know before starting.</p>',"Listen",async()=>{
+  const id=modal("Start listening",'<label for="device">Playback device</label><select id="device"></select><p>Raphael listens to audio played through this output. Let participants know before starting.</p>'+handsFreeControl,"Listen",async()=>{
     if(!$("device").value)throw Error("Choose an available playback device.");
     const device = $("device").value;
     $("confirm").textContent = "Preparing Whisper…";
     try {
       await api("prepare-whisper");
       if (id !== dialogId || !$("dialog").open) return;
-      live = await api("start", {device});
+      const handsFree=$("hands-free").checked;
+      live = await api("start", {device,assistant:assistantSettings({...prefs,handsFree})});
+      stateRevision++;prefs.handsFree=handsFree;save();
       status("");
       render();
     } finally {
       if (id === dialogId) $("confirm").textContent = "Listen";
     }
   });
+  $("hands-free").checked=prefs.handsFree;
   $("confirm").disabled=true;
   try{const ds=await api("devices");if(id!==dialogId)return;
     if(!ds.length)throw Error("No playback monitor found. Check the audio setup for your OS in the README.");
@@ -155,10 +198,10 @@ $("mobile-menu").onclick=()=>$("sidebar").classList.toggle("open");
 $("new").onclick=()=>{
   $("sidebar").classList.remove("open");
   modal("New session","<p>Clear the current live transcript and answer cards? Your topics, folder and settings carry over.</p>","New session",async()=>{
-    live=await api("new");seq++;busy=false;lastAutoId=0;lastAutoAt=0;liveCards=[];lockActions(false);switchView(false);
+    live=await api("new");seq++;busy=false;stateRevision++;liveCards=[];lockActions(false);switchView(false);
   });
 };
-$("listen").onclick=async()=>{try{if(demo)return switchView(false);if(live.active){live=await api("stop");render();}else await startDialog();}catch(err){status(err.message);}};
+$("listen").onclick=async()=>{try{if(demo)return switchView(false);if(live.active){live=await api("stop");stateRevision++;render();}else await startDialog();}catch(err){status(err.message);}};
 function lockActions(on){[...$("commands").children,$("ask-form").querySelector("button")].forEach(b=>b.disabled=on);}
 async function ask(action,question=""){
   if(busy)return;
@@ -166,28 +209,24 @@ async function ask(action,question=""){
   if(!live.turns.length&&!question){status("Start listening first, or type a question for Codex.");return;}
   const generation=seq;busy=true;lockActions(true);status("Raphael is thinking…");const folder=prefs.folder;
   try{
-    const reply=await api("answer",{action,question,turns:live.turns.slice(-12).map(t=>t.text),topics:prefs.topics,personality:prefs.personality,folder});
-    if(seq!==generation)return;liveCards.push({...reply,folder});if(liveCards.length>50)liveCards.shift();status("");render();
+    const reply=await api("answer",{action,question,turns:live.turns.slice(-12).map(t=>t.text),topics:prefs.topics,personality:prefs.personality,model:prefs.model,folder});
+    if(seq!==generation)return;liveCards.push({...reply,folder,timestamp:Date.now()/1000});if(liveCards.length>50)liveCards.shift();status("");render();
   }catch(err){if(seq===generation)status(err.message);}finally{if(seq===generation){busy=false;lockActions(false);}}
 }
 actions.forEach(([key,label,symbol])=>{const button=elem("button");button.innerHTML=icon(symbol);button.append(label);button.onclick=()=>ask(key);$("commands").append(button);});
 $("ask-form").onsubmit=e=>{e.preventDefault();const q=$("question").value.trim();if(q&&!busy){$("question").value="";ask("ask",q);}};
 async function poll(){
   try{
-    const before=live;live=await api("state");
+    const revision=stateRevision;
+    const current=await api("state");
+    if(revision!==stateRevision)return;
+    const before=live;live=current;
     if(!demo){
-      if(live.active!==before.active||live.turns.at(-1)?.id!==before.turns.at(-1)?.id||live.level!==before.level)render();
+      if(live.active!==before.active||live.turns.at(-1)?.id!==before.turns.at(-1)?.id||live.level!==before.level||JSON.stringify(live.copilot)!==JSON.stringify(before.copilot))render();
       if(live.error&&live.error!==before.error)status(live.error);
       if(live.dropped>before.dropped)status("Audio processing fell behind. Some speech was skipped.");
-      const latest=live.turns.at(-1);
-      if(latest&&latest.id>lastAutoId&&!busy){
-        lastAutoId=latest.id;
-        if(live.active&&prefs.auto&&Date.now()-lastAutoAt>60000&&prefs.topics.some(t=>t.toLowerCase().split(/\s+/).some(w=>w.length>3&&latest.text.toLowerCase().includes(w)))){
-          lastAutoAt=Date.now();void ask("insight");
-        }
-      }
     }
   }catch(err){if(!demo)status("Lost connection to the local Raphael service.");}
-  setTimeout(poll,750);
+  finally{setTimeout(poll,750);}
 }
-render();void poll();
+modelOptions($("session-model"),prefs.model);render();void poll();void refreshModels();

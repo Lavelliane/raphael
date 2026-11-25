@@ -15,7 +15,8 @@ from urllib.request import urlopen
 
 DEFAULT_MODEL = Path(__file__).resolve().parent / "models" / "ggml-small-q5_1.bin"
 MODEL_REVISION = "87cd18b47b941d2f65d09981dad23bb7d0481c77"
-MODEL_URL = f"https://huggingface.co/ggerganov/whisper.cpp/resolve/{MODEL_REVISION}/{DEFAULT_MODEL.name}"
+FAST_MODEL = DEFAULT_MODEL.with_name("ggml-base-q5_1.bin")
+FAST_SHA256 = "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898"
 MODEL_SHA256 = "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb"
 SETUP_HINT = "On macOS, run python raphael.py --setup-whisper from the checkout."
 
@@ -28,7 +29,9 @@ def checksum(path):
     return digest.hexdigest()
 
 
-def setup_mac_whisper():
+def setup_mac_whisper(preset="balanced"):
+    model, expected, size = ((FAST_MODEL, FAST_SHA256, 57) if preset == "fast"
+                             else (DEFAULT_MODEL, MODEL_SHA256, 181))
     if sys.platform != "darwin":
         raise ValueError("Use the whisper.cpp installation instructions for your OS in the README.")
     if not shutil.which("whisper-server"):
@@ -38,18 +41,18 @@ def setup_mac_whisper():
         subprocess.run([brew, "install", "whisper.cpp"], check=True)
         if not shutil.which("whisper-server"):
             raise ValueError("Homebrew installed whisper.cpp. Add Homebrew's bin directory to PATH and retry.")
-    if DEFAULT_MODEL.is_file() and checksum(DEFAULT_MODEL) == MODEL_SHA256:
+    if model.is_file() and checksum(model) == expected:
         return
-    DEFAULT_MODEL.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Downloading the multilingual Whisper model (181 MiB) to {DEFAULT_MODEL}", flush=True)
-    with tempfile.NamedTemporaryFile(dir=DEFAULT_MODEL.parent, delete=False) as temp:
+    model.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading the multilingual Whisper model ({size} MiB) to {model}", flush=True)
+    with tempfile.NamedTemporaryFile(dir=model.parent, delete=False) as temp:
         pending = Path(temp.name)
     try:
         subprocess.run(["curl", "--fail", "--location", "--retry", "3",
-                        "--output", str(pending), MODEL_URL], check=True)
-        if checksum(pending) != MODEL_SHA256:
+                        "--output", str(pending), f"https://huggingface.co/ggerganov/whisper.cpp/resolve/{MODEL_REVISION}/{model.name}"], check=True)
+        if checksum(pending) != expected:
             raise ValueError("Whisper model download failed its checksum. Rerun with --setup-whisper.")
-        pending.replace(DEFAULT_MODEL)
+        pending.replace(model)
     finally:
         pending.unlink(missing_ok=True)
 

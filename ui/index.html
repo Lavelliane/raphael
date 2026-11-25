@@ -13,7 +13,7 @@
 <aside class="context"><h2>Session context</h2><div class="context-group"><div class="context-label"><i data-icon="folder"></i> Workspace <button id="edit-folder" aria-label="Change workspace"><i data-icon="edit"></i></button></div><span id="folder-label"></span></div>
 <div class="context-group"><div class="context-label"><i data-icon="hash"></i> Watch topics <button id="edit-topics" aria-label="Edit watch topics"><i data-icon="edit"></i></button></div><div id="topics"></div></div>
 <div class="context-group"><div class="context-label"><i data-icon="audio"></i> Audio source</div><span id="source-label">System playback</span><div class="meter" id="meter" aria-hidden="true"></div></div>
-<div class="context-group"><div class="context-label"><i data-icon="cpu"></i> Assistant</div><span>Codex · ChatGPT login</span></div></aside></div></section>
+<div class="context-group"><div class="context-label"><i data-icon="cpu"></i> Assistant</div><label for="session-model">Codex model</label><select id="session-model"></select><span id="assistant-state" role="status"></span></div></aside></div></section>
 <footer><span><i data-icon="terminal"></i> raphael</span><span id="foot-state">Local workspace</span></footer></main></div>
 <dialog id="dialog"><form id="dialog-form"><div class="dialog-head"><h2 id="dialog-title"></h2><button type="button" id="close" aria-label="Close dialog"><i data-icon="close"></i></button></div><div id="dialog-body"></div><p id="dialog-error" role="alert"></p><div class="dialog-foot"><button type="button" id="cancel">Cancel</button><button class="primary" type="submit" id="confirm">Save</button></div></form></dialog>
 </body></html>

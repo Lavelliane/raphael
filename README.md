@@ -24,7 +24,7 @@ Requires Python 3.10 or newer. From the repository root run:
 python raphael.py
 ```
 
-Open **Example session** to try a scripted Taglish refactoring discussion, answer cards, and a diagram. The example runs offline, with zero package installs or model downloads. **Settings** lets you try four personalities (Great Sage, Pair programmer, Reviewer, Coach), choose a pixel avatar, and enable topic-triggered suggestions. The dark, keyboard-friendly workspace takes visual inspiration from OpenCode and T3 Code.
+Open **Example session** to try a scripted Taglish refactoring discussion, answer cards, and a diagram. The example runs offline, with zero package installs or model downloads. **Settings** lets you try four personalities (Great Sage, Pair programmer, Reviewer, Coach), choose a pixel avatar, select a Codex model, and control hands-free assistance. The dark, keyboard-friendly workspace takes visual inspiration from OpenCode and T3 Code.
 
 ## Use it in a real meeting
 
@@ -32,7 +32,7 @@ Open **Example session** to try a scripted Taglish refactoring discussion, answe
 
 Install the official Codex CLI. Run `codex login`, choose **Sign in with ChatGPT**, and check `codex login status`. In Raphael, use the pencil beside **Workspace** to enter the absolute path of a local checkout or folder. You can now type a question about it, even before connecting audio.
 
-Raphael calls `codex exec` with an ephemeral, read-only session and asks for a structured answer. A source chip opens a local excerpt around the cited line. The selected personality changes the prompt for live answers. Calls draw on your plan’s Codex allowance. Select a folder you are comfortable making available to Codex. [Codex CLI](https://developers.openai.com/codex/cli/) · [Authentication](https://developers.openai.com/codex/auth/)
+Raphael calls `codex exec` with an ephemeral, read-only session and asks for a structured answer. The **Codex model** picker in Session context and Settings reads the visible models from your local CLI. **Fast** prefers a listed lightweight model and requests low reasoning effort where supported. Its label shows the selected model. Choosing an individual model also favors low effort. **Codex default** inherits your CLI’s configured model and reasoning effort. If model discovery is unavailable, Fast falls back to Codex default. A source chip opens a local excerpt around the cited line. The selected personality changes the prompt for live answers. Calls draw on your plan’s Codex allowance. Select a folder you are comfortable making available to Codex. [Codex CLI](https://developers.openai.com/codex/cli/) · [Authentication](https://developers.openai.com/codex/auth/)
 
 ### 2. Live transcription
 
@@ -71,11 +71,25 @@ python raphael.py --setup-whisper
 
 This checks for `whisper-server`, installs Homebrew’s `whisper.cpp` formula if needed, and downloads the multilingual model (181 MiB) if a verified copy is missing. Setup verifies the SHA-256 checksum before replacing the file, then opens Raphael. For later launches use `python raphael.py`.
 
+For quicker transcription on Apple Silicon, install and launch with the smaller multilingual base model:
+
+```sh
+python raphael.py --setup-whisper --whisper-preset fast
+```
+
+On subsequent launches, use `python raphael.py --whisper-preset fast`. This adds about 57 MiB and keeps your existing small model. `python raphael.py --whisper-preset balanced` uses small if you prefer its transcripts for names or mixed-language discussion. If you already run Whisper separately, Raphael reuses that server’s loaded model. To try both side by side, add `--whisper-port 8081` to the fast launch command.
+
 Choose **Start listening → Mac system audio (Core Audio) → Listen**. Leave the Raphael terminal running. Play a few seconds of speech and pause. The level meter should move during playback and a transcript should appear after the pause. If port 8080 belongs to another app, run `python raphael.py --whisper-port 8081` to use a free port.
 
 If macOS asks for access, allow the app that launched Raphael under **System Settings → Privacy & Security → Screen & System Audio Recording**. If macOS requests a relaunch, quit that terminal or IDE, reopen it, and restart the services. On older macOS versions, check your version with `sw_vers -productVersion` and use the playback setup table above. [Apple recording permissions](https://support.apple.com/guide/mac-help/mchld6aa7d23/mac) · [Homebrew whisper.cpp](https://formulae.brew.sh/formula/whisper.cpp)
 
-### 3. Pick an action
+### 3. Listen hands-free
+
+**Hands-free assistance** is checked in the listening dialog by default. Raphael considers new English or Taglish speech in context and can offer a speakable answer, a short explanation, a grounded correction, or a follow-up question. Project-specific corrections require a file and line. General technical claims can get a **Possible correction** with a checkable counterexample. The watch topics guide the model even when speakers use different wording. Raphael can stay quiet when a point is unfinished or already covered. For example, “Na-migrate na lahat ng queries” can prompt a check of the attached checkout for a remaining call site.
+
+The local service gathers new speech while Codex is busy and spaces automatic requests at least 15 seconds apart. The first request starts after a short settling window. Skip decisions still use the Codex allowance. Switching away from Raphael’s tab leaves the service running. To use transcription alone, clear **Hands-free assistance** before listening or turn it off in Settings. Manual controls remain available throughout a session.
+
+### Manual controls
 
 | Control | Result |
 | --- | --- |
@@ -85,18 +99,18 @@ If macOS asks for access, allow the app that launched Raphael under **System Set
 | Diagram | A compact, linear flow with up to five nodes. |
 | Ask about this session | A custom question grounded in the selected folder and recent conversation. |
 
-Turn on automatic insights in Settings for a response to matching terms in new speech. This is a simple local keyword filter with a one-minute cooldown. The example session always uses scripted replies.
+The example session uses scripted replies.
 
 ## Where the data goes
 
 - Playback audio is segmented in memory and sent to whisper.cpp on loopback. Raphael writes no audio recordings. Current speech may be discarded when you stop capture.
-- The server retains up to 180 transcript segments in memory. A new session clears them. Recent cards live in the browser tab. Closing the Python process stops capture and clears the server transcript.
-- Manual answers and opted-in suggestions send up to 12 recent transcript segments, topics, and your question to Codex. Codex can read the selected workspace and use relevant file content in the request.
-- Avatar, personality, topics, folder path, and the automatic-suggestions preference are saved in this browser’s local storage.
+- The server retains up to 180 transcript segments in memory. A new session clears them. The service keeps up to 50 automatic cards in memory. Manual cards live in the browser tab. Closing the Python process stops capture and clears the server transcript.
+- Manual answers and hands-free assistance send up to 12 recent transcript segments and your topics to Codex. Manual questions include what you typed. Hands-free requests include up to three previous automatic cards to reduce repetition. Codex can read the selected workspace and use relevant file content in the request.
+- Avatar, personality, topics, folder path, model choice, and the hands-free preference are saved in this browser’s local storage.
 
 ## Development
 
-The local Python service serves the interface on `127.0.0.1:8765`. The frontend uses plain HTML, CSS, and JavaScript. The speech worker waits for pauses or a ten-second limit before submitting an utterance. A bounded queue reports skipped audio if the model falls behind.
+The local Python service serves the interface on `127.0.0.1:8765`. The frontend uses plain HTML, CSS, and JavaScript. The speech worker submits after 400 ms of silence or a four-second segment limit. Whisper decoding time is additional. A bounded queue reports skipped audio if the model falls behind.
 
 ```sh
 python -m unittest discover -s tests -v
