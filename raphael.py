@@ -89,7 +89,7 @@ class Session:
             self.listener.start()
 
 
-def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
+def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL, *, desktop=False):
     state, key = Session(whisper_port, whisper_model), secrets.token_urlsafe(32)
     answering = threading.Lock()
 
@@ -115,7 +115,7 @@ def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
             return self.headers.get("Host") == f"127.0.0.1:{self.server.server_port}"
 
         def do_GET(self):
-            if not self.allowed():
+            if desktop or not self.allowed():
                 return self.send(403, {})
             path = self.path.split("?", 1)[0]
             if path == "/":
@@ -201,6 +201,8 @@ def make_server(port, whisper_port, whisper_model=DEFAULT_MODEL):
                 self.send(400, dict(error=str(exc)))
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    if desktop:
+        server.desktop_token = key
     return server, state
 
 
